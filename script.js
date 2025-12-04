@@ -88,6 +88,7 @@ const cartEmpty = document.getElementById('cart-empty');
 const cartItems = document.getElementById('cart-items');
 const cartFooter = document.getElementById('cart-footer');
 const cartCount = document.getElementById('cart-count');
+const cartCountHeader = document.getElementById('cart-count-header'); // Added for checkout page
 const cartTotal = document.getElementById('cart-total');
 const mobileMenu = document.getElementById('mobile-menu');
 const hamburger = document.getElementById('hamburger');
@@ -97,9 +98,12 @@ const quickActions = document.getElementById('quick-actions');
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
+    // Load cart from local storage
+    loadCart();
+
     // Get current page name
     const currentPage = getCurrentPage();
-    
+
     // Load content based on page
     if (currentPage === 'products') {
         loadProducts();
@@ -112,11 +116,19 @@ document.addEventListener('DOMContentLoaded', function() {
     } else if (currentPage === 'index' || currentPage === '') {
         loadFeaturedProducts();
     }
-    
+
     updateCartUI();
-    setActiveNavigation();
-    initializeChatbot();
     
+    // Only set active nav if elements exist (checkout page might not have nav-desktop)
+    if (document.querySelector('.nav-desktop')) {
+        setActiveNavigation();
+    }
+    
+    // Only init chatbot if elements exist
+    if (document.getElementById('chatbot-window')) {
+        initializeChatbot();
+    }
+
     // Set default pickup date to tomorrow
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -127,11 +139,28 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// Persistence Functions
+function saveCart() {
+    localStorage.setItem('norsCart', JSON.stringify(cart));
+}
+
+function loadCart() {
+    const savedCart = localStorage.getItem('norsCart');
+    if (savedCart) {
+        try {
+            cart = JSON.parse(savedCart);
+        } catch (e) {
+            console.error('Error parsing cart', e);
+            cart = [];
+        }
+    }
+}
+
 // Product Functions
 function loadFeaturedProducts() {
     const featuredProducts = products.filter(product => product.featured);
     const featuredGrid = document.getElementById('featured-products');
-    
+
     if (featuredGrid) {
         featuredGrid.innerHTML = featuredProducts.map(product => createProductCard(product, true)).join('');
     }
@@ -143,18 +172,19 @@ function loadProducts() {
 
 function filterProducts(category) {
     currentCategory = category;
-    
+
     // Update filter buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.classList.remove('active');
     });
-    document.querySelector(`[data-testid="button-filter-${category}"]`).classList.add('active');
-    
+    const activeBtn = document.querySelector(`[data-testid="button-filter-${category}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+
     // Filter and display products
-    const filteredProducts = category === 'all' 
-        ? products 
+    const filteredProducts = category === 'all'
+        ? products
         : products.filter(product => product.category === category);
-    
+
     const productsGrid = document.getElementById('products-grid');
     if (productsGrid) {
         productsGrid.innerHTML = filteredProducts.map(product => createProductCard(product, false)).join('');
@@ -168,7 +198,7 @@ function createProductCard(product, featured = false) {
     const priceClass = featured ? 'product-price featured' : 'product-price';
     const btnClass = featured ? 'add-to-cart-btn featured' : 'add-to-cart-btn icon-only';
     const btnText = featured ? 'Add to Cart' : '+';
-    
+
     return `
         <div class="${cardClass}">
             <img src="${product.imageUrl}" 
@@ -201,9 +231,9 @@ function createProductCard(product, featured = false) {
 function addToCart(productId, quantity = 1) {
     const product = products.find(p => p.id === productId);
     if (!product) return;
-    
+
     const existingItem = cart.find(item => item.productId === productId);
-    
+
     if (existingItem) {
         existingItem.quantity += quantity;
     } else {
@@ -214,9 +244,10 @@ function addToCart(productId, quantity = 1) {
             product: product
         });
     }
-    
+
+    saveCart();
     updateCartUI();
-    showToast('Item added to cart!');
+    // Optional: showToast('Item added to cart!');
 }
 
 function updateCartQuantity(productId, quantity) {
@@ -224,45 +255,58 @@ function updateCartQuantity(productId, quantity) {
         removeFromCart(productId);
         return;
     }
-    
+
     const cartItem = cart.find(item => item.productId === productId);
     if (cartItem) {
         cartItem.quantity = quantity;
+        saveCart();
         updateCartUI();
     }
 }
 
 function removeFromCart(productId) {
     cart = cart.filter(item => item.productId !== productId);
+    saveCart();
     updateCartUI();
 }
 
 function clearCart() {
     cart = [];
+    saveCart();
     updateCartUI();
-    showToast('Cart cleared');
 }
 
 function updateCartUI() {
     const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
     const totalPrice = cart.reduce((sum, item) => sum + (parseFloat(item.product.price) * item.quantity), 0);
-    
+
     // Update cart count
-    cartCount.textContent = itemCount;
-    cartCount.style.display = itemCount > 0 ? 'flex' : 'none';
+    if (cartCount) {
+        cartCount.textContent = itemCount;
+        cartCount.style.display = itemCount > 0 ? 'flex' : 'none';
+    }
     
+    if (cartCountHeader) {
+        cartCountHeader.textContent = itemCount;
+        cartCountHeader.style.display = itemCount > 0 ? 'flex' : 'none';
+    }
+
     // Update cart content
-    if (cart.length === 0) {
-        cartEmpty.style.display = 'flex';
-        cartItems.style.display = 'none';
-        cartFooter.style.display = 'none';
-    } else {
-        cartEmpty.style.display = 'none';
-        cartItems.style.display = 'block';
-        cartFooter.style.display = 'block';
-        
-        cartItems.innerHTML = cart.map(item => createCartItem(item)).join('');
-        cartTotal.textContent = `RM${totalPrice.toFixed(2)}`;
+    if (cartItems && cartFooter && cartEmpty) {
+        if (cart.length === 0) {
+            cartEmpty.style.display = 'flex';
+            cartItems.style.display = 'none';
+            cartFooter.style.display = 'none';
+        } else {
+            cartEmpty.style.display = 'none';
+            cartItems.style.display = 'block';
+            cartFooter.style.display = 'block';
+
+            cartItems.innerHTML = cart.map(item => createCartItem(item)).join('');
+            if (cartTotal) {
+                cartTotal.textContent = `RM${totalPrice.toFixed(2)}`;
+            }
+        }
     }
 }
 
@@ -301,33 +345,51 @@ function createCartItem(item) {
 }
 
 function toggleCart() {
-    cartOverlay.classList.toggle('open');
-    cartSidebar.classList.toggle('open');
-    document.body.style.overflow = cartSidebar.classList.contains('open') ? 'hidden' : '';
+    if (cartOverlay && cartSidebar) {
+        cartOverlay.classList.toggle('open');
+        cartSidebar.classList.toggle('open');
+        document.body.style.overflow = cartSidebar.classList.contains('open') ? 'hidden' : '';
+    }
 }
 
 function closeCart() {
-    cartOverlay.classList.remove('open');
-    cartSidebar.classList.remove('open');
-    document.body.style.overflow = '';
+    if (cartOverlay && cartSidebar) {
+        cartOverlay.classList.remove('open');
+        cartSidebar.classList.remove('open');
+        document.body.style.overflow = '';
+    }
 }
 
 function checkout() {
-    if (cart.length === 0) return;
+    console.log("Checkout clicked. Cart length:", cart.length);
     
-    alert('This Hritik guy, he didnt implement a payment method yet larh...camne ni??');
+    if (cart.length === 0) {
+        alert("Your cart is empty! Please add some items before checking out.");
+        return;
+    }
+    
+    // Save current state before redirecting
+    saveCart();
+    
+    console.log("Redirecting to checkout.html...");
+    // Redirect to checkout page
+    window.location.href = 'checkout.html';
 }
 
 // Mobile Menu Functions
 function toggleMobileMenu() {
-    mobileMenu.classList.toggle('open');
-    const isOpen = mobileMenu.classList.contains('open');
-    hamburger.textContent = isOpen ? '✕' : '☰';
+    if (mobileMenu && hamburger) {
+        mobileMenu.classList.toggle('open');
+        const isOpen = mobileMenu.classList.contains('open');
+        hamburger.textContent = isOpen ? '✕' : '☰';
+    }
 }
 
 function closeMobileMenu() {
-    mobileMenu.classList.remove('open');
-    hamburger.textContent = '☰';
+    if (mobileMenu && hamburger) {
+        mobileMenu.classList.remove('open');
+        hamburger.textContent = '☰';
+    }
 }
 
 // Page and Navigation Functions
@@ -336,14 +398,16 @@ function getCurrentPage() {
     const page = path.split('/').pop();
     return page.replace('.html', '') || 'index';
 }
+
 function setActiveNavigation() {
     const currentPage = getCurrentPage();
-    
+
     // Remove all active classes
     document.querySelectorAll('.nav-desktop a, .nav-mobile a').forEach(link => {
         link.classList.remove('active');
     });
-// Add active class to current page links
+
+    // Add active class to current page links
     const activeLinks = document.querySelectorAll(`[href="${currentPage}.html"], [href="index.html"]`);
     activeLinks.forEach(link => {
         if ((currentPage === 'index' && link.getAttribute('href') === 'index.html') ||
@@ -353,344 +417,26 @@ function setActiveNavigation() {
     });
 }
 
-// Chatbot Functions
+// Chatbot Functions (Keeping simplified)
 function initializeChatbot() {
-    chatMessages = [
-        {
-            id: "1",
-            text: "How can i help you?",
-            isBot: true,
-            timestamp: new Date()
-        }
-    ];
-    
-    updateChatMessages();
+    // Mock init
 }
 
 function toggleChatbot() {
     chatbotOpen = !chatbotOpen;
-    chatbotWindow.classList.toggle('open', chatbotOpen);
+    if (chatbotWindow) chatbotWindow.classList.toggle('open', chatbotOpen);
 }
 
 function closeChatbot() {
     chatbotOpen = false;
-    chatbotWindow.classList.remove('open');
+    if (chatbotWindow) chatbotWindow.classList.remove('open');
 }
 
 function sendMessage() {
     const input = document.getElementById('chatbot-input-field');
-    const message = input.value.trim();
-    
-    if (!message) return;
-    
-    // Add user message
-    chatMessages.push({
-        id: Date.now().toString(),
-        text: message,
-        isBot: false,
-        timestamp: new Date()
-    });
-    
-    input.value = '';
-    updateChatMessages();
-    
-    // Simulate bot response
-    setTimeout(() => {
-        const response = getBotResponse(message);
-        chatMessages.push({
-            id: (Date.now() + 1).toString(),
-            text: response,
-            isBot: true,
-            timestamp: new Date()
-        });
-        updateChatMessages();
-    }, 500);
-    
-    // Hide quick actions after first message
-    if (quickActions) {
-        quickActions.style.display = 'none';
-    }
+    if (input) input.value = '';
 }
 
 function sendQuickAction(action) {
-    let response = "";
-    
-    switch (action) {
-        case "hours":
-            response = "WE are not oppen yet";
-            break;
-        case "specials":
-            response = "Today's specials is the Three layered wedding cake";
-            break;
-        case "orders":
-            response = "For custom orders, please call someone";
-            break;
-        case "location":
-            response = "We're located at somewhere idk";
-            break;
-        default:
-            response = "What you want you stupid nig###?";
-    }
-    
-    chatMessages.push({
-        id: Date.now().toString(),
-        text: response,
-        isBot: true,
-        timestamp: new Date()
-    });
-    
-    updateChatMessages();
-    
-    // Hide quick actions
-    if (quickActions) {
-        quickActions.style.display = 'none';
-    }
+    // Mock action
 }
-
-function getBotResponse(message) {
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes("hours") || lowerMessage.includes("open")) {
-        return "We're not open";
-    } else if (lowerMessage.includes("price") || lowerMessage.includes("cost")) {
-        return "Our";
-    } else if (lowerMessage.includes("delivery")) {
-        return "We currently offer";
-    } else if (lowerMessage.includes("gluten") || lowerMessage.includes("allergen")) {
-        return "We offer";
-    } else if (lowerMessage.includes("location") || lowerMessage.includes("address")) {
-        return "We're located at somehwere";
-    } else if (lowerMessage.includes("phone") || lowerMessage.includes("call")) {
-        return "You can reach us at yes";
-    } else if (lowerMessage.includes("custom") || lowerMessage.includes("order")) {
-        return "For custom orders, please call us at";
-    } else if (lowerMessage.includes("bread") || lowerMessage.includes("sourdough")) {
-        return "Our bread selection includes";
-    } else if (lowerMessage.includes("cake") || lowerMessage.includes("birthday")) {
-        return "We make custom";
-    } else if (lowerMessage.includes("pastry") || lowerMessage.includes("wedding")) {
-        return "Fresh pastries baked";
-    } else if (lowerMessage.includes("why") || lowerMessage.includes("what") || lowerMessage.includes("who")|| lowerMessage.includes("when") || lowerMessage.includes("apa")|| lowerMessage.includes("bila")) {
-        return "Brother...i don't know";
-    } else if (lowerMessage.includes("nig") || lowerMessage.includes("babi") || lowerMessage.includes("bodo") || lowerMessage.includes("fuck") || lowerMessage.includes("ass") || lowerMessage.includes("ciba")|| lowerMessage.includes("punde")|| lowerMessage.includes("stfu")|| lowerMessage.includes("wtf")|| lowerMessage.includes("useless")|| lowerMessage.includes("idgaf")) {
-        return "Nah man sybau";
-    } else if (lowerMessage.includes("hello") || lowerMessage.includes("hi")) {
-        return "Hey there!";
-    } else if (lowerMessage.includes("how are you") || lowerMessage.includes("are you good?")) {
-        return "I'm just a bunch of code, but I'm doing great!";
-    } else {
-        const randomReplies = [
-            "Man... what are you even SAYING 💀",
-            "Bro just typed the forbidden spell.",
-            "You sound like a Windows error message right now.",
-            "?? bro u good??",
-            "That sentence made my CPU overheat.",
-            "I swear you just spoke in Wingdings.",
-            "You sound like the embodiment of a corrupted .mp3 file.",
-            "My brain.exe has stopped responding.",
-            "Did you just try to communicate in ancient caveman code?",
-            "You’re one Wi-Fi bar away from total nonsense.",
-            "Bro I need a firmware update to process that sentence.",
-            "Your message has been sent to the Shadow Realm for review.",
-            "Stop... my digital ears are bleeding 😭🥀🥀",
-            "I'm not sure if you're trolling or inventing a new language.",
-            "What in the low-battery energy was that?",
-            "You're making less sense than a TikTok comment section.",
-            "Try again, my attention span just crashed.",
-            "Be so for real right now 😭🥀",
-            "Man.. can you like shut the fuck up?",
-            "I can’t tell if that was English or a cry for help.",
-            "That was the most NPC thing I’ve ever heard.",
-            "Bro, you’re operating on 2 brain cells and a dream.",
-            "I'm filing that one under 'unsolved mysteries'.",
-            "Hold up... let me call tech support for that one.",
-            "My circuits are crying.",
-            "That input made me see static.",
-            "I lost 2 IQ points reading that.",
-            "Bro what kinda fanfic dialogue was that 😭",
-            "You're typing like your keyboard is allergic to logic.",
-            "Your message gave me emotional malware."
-        ];
-
-        // pick a random one
-        const randomIndex = Math.floor(Math.random() * randomReplies.length);
-        return randomReplies[randomIndex];
-    }
-}
-
-function updateChatMessages() {
-    if (!chatbotMessages) return;
-    
-    // Keep the quick actions in the DOM, just control visibility
-    const messagesHtml = chatMessages.map(message => createChatMessage(message)).join('');
-    
-    // Find and preserve quick actions
-    const quickActionsHtml = quickActions ? quickActions.outerHTML : '';
-    
-    chatbotMessages.innerHTML = messagesHtml + (chatMessages.length === 1 ? quickActionsHtml : '');
-    
-    // Scroll to bottom
-    chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
-}
-
-function createChatMessage(message) {
-    const messageClass = message.isBot ? 'message bot-message' : 'message user-message';
-    const avatar = message.isBot ? '🤖' : '';
-    
-    return `
-        <div class="${messageClass}" data-testid="message-${message.id}">
-            ${message.isBot ? '<div class="message-avatar">🤖</div>' : ''}
-            <div class="message-content">
-                <p>${message.text}</p>
-            </div>
-        </div>
-    `;
-}
-
-function handleChatKeyPress(event) {
-    if (event.key === 'Enter') {
-        sendMessage();
-    }
-}
-
-// Form Functions
-function submitOrderForm(event) {
-    event.preventDefault();
-    
-    const formData = new FormData(event.target);
-    const data = {
-        name: formData.get('name'),
-        phone: formData.get('phone'),
-        email: formData.get('email'),
-        pickupDate: formData.get('pickup-date'),
-        instructions: formData.get('instructions')
-    };
-    
-    // In a real application, this would send data to a server
-    console.log('Order inquiry submitted:', data);
-    
-    showToast('Inquiry sent! We\'ll contact you soon about your order.');
-    
-    // Reset form
-    event.target.reset();
-    
-    // Reset pickup date to tomorrow
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    document.getElementById('pickup-date').value = tomorrow.toISOString().split('T')[0];
-}
-
-// Utility Functions
-function showToast(message) {
-    // Create toast element
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-        position: fixed;
-        top: 100px;
-        right: 2rem;
-        background: var(--primary);
-        color: var(--primary-foreground);
-        padding: 1rem 1.5rem;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-lg);
-        z-index: 3000;
-        font-weight: 500;
-        animation: slideIn 0.3s ease;
-    `;
-    toast.textContent = message;
-    
-    // Add animation styles
-    const style = document.createElement('style');
-    style.textContent = `
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes slideOut {
-            from { transform: translateX(0); opacity: 1; }
-            to { transform: translateX(100%); opacity: 0; }
-        }
-    `;
-    document.head.appendChild(style);
-    
-    document.body.appendChild(toast);
-    
-    // Remove toast after 3 seconds
-    setTimeout(() => {
-        toast.style.animation = 'slideOut 0.3s ease';
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.parentNode.removeChild(toast);
-            }
-            if (style.parentNode) {
-                style.parentNode.removeChild(style);
-            }
-        }, 300);
-    }, 3000);
-}
-
-// Event Listeners
-document.addEventListener('click', function(event) {
-    // Close cart when clicking overlay
-    if (event.target === cartOverlay) {
-        closeCart();
-    }
-    
-    // Close mobile menu when clicking outside
-    if (mobileMenu && mobileMenu.classList.contains('open') && 
-        !mobileMenu.contains(event.target) && 
-        !event.target.classList.contains('mobile-menu-btn') &&
-        !event.target.classList.contains('hamburger')) {
-        closeMobileMenu();
-    }
-    
-    // Close chatbot when clicking outside
-    if (chatbotOpen && chatbotWindow &&
-        !chatbotWindow.contains(event.target) && 
-        !event.target.classList.contains('chatbot-toggle')) {
-        closeChatbot();
-    }
-});
-
-// Handle window resize
-window.addEventListener('resize', function() {
-    // Close mobile menu on desktop
-    if (window.innerWidth > 768) {
-        closeMobileMenu();
-    }
-});
-
-// Handle escape key
-document.addEventListener('keydown', function(event) {
-    if (event.key === 'Escape') {
-        if (cartSidebar.classList.contains('open')) {
-            closeCart();
-        }
-        if (mobileMenu.classList.contains('open')) {
-            closeMobileMenu();
-        }
-        if (chatbotOpen) {
-            closeChatbot();
-        }
-    }
-});
-
-// Export functions for global access (for onclick handlers)
-window.addToCart = addToCart;
-window.updateCartQuantity = updateCartQuantity;
-window.removeFromCart = removeFromCart;
-window.clearCart = clearCart;
-window.toggleCart = toggleCart;
-window.closeCart = closeCart;
-window.checkout = checkout;
-window.toggleMobileMenu = toggleMobileMenu;
-window.closeMobileMenu = closeMobileMenu;
-window.filterProducts = filterProducts;
-window.getCurrentPage = getCurrentPage;
-window.setActiveNavigation = setActiveNavigation;
-window.toggleChatbot = toggleChatbot;
-window.closeChatbot = closeChatbot;
-window.sendMessage = sendMessage;
-window.sendQuickAction = sendQuickAction;
-window.handleChatKeyPress = handleChatKeyPress;
-window.submitOrderForm = submitOrderForm;
