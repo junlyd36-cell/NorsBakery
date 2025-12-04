@@ -1,16 +1,25 @@
+// This is your test secret API key.
+const stripe = require('stripe')('sk_test_51SaTCYQ91aMw6fkx1ISzBocu1KrXeXrCpCV6P1lJ0osKogIbxGcBz1rvBqMySzrhSkyLjAkFGcT9GrN3xbsCqmbV00WOZtwa6h');
 const express = require('express');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-
 const app = express();
-app.use(cors());
-app.use(bodyParser.json());
+app.use(express.static('public'));
 
-// Example route
-app.get('/', (req, res) => {
-  res.send('Bakery backend is live!');
+const YOUR_DOMAIN = 'http://localhost:4242';
+
+app.post('/create-checkout-session', async (req, res) => {
+  const session = await stripe.checkout.sessions.create({
+    line_items: [
+      {
+        // Provide the exact Price ID (for example, price_1234) of the product you want to sell
+        price: '{{PRICE_ID}}',
+        quantity: 1,
+      },
+    ],
+    mode: 'payment',
+    success_url: `${YOUR_DOMAIN}/success.html`,
+  });
+
+  res.redirect(303, session.url);
 });
 
-// Always use Render’s PORT environment variable
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(4242, () => console.log('Running on port 4242'));
